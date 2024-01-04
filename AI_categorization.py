@@ -1,11 +1,12 @@
 import os
-import openai
+from openai import OpenAI
+
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 import sys
 from datetime import datetime
 
 # Initialize the OpenAI API client (as you did before, not included here)
 #openai.api_key = ""
-openai.api_key = os.getenv("OPENAI_API_KEY")
 model_engine = "gpt-3.5-turbo"
 
 def generate_category(description1, description2, categories_csv):
@@ -21,8 +22,7 @@ def generate_category(description1, description2, categories_csv):
         return
 
     # Generate content for the homework (Assuming you have initialized openai before this)
-    response = openai.ChatCompletion.create(
-    model="gpt-3.5-turbo",  # or the model you are using
+    response = client.chat.completions.create(model="gpt-3.5-turbo",  # or the model you are using
     messages=[
         {"role": "user", "content": f"""For the following description of transaction:\n{transaction_description}\n
                Choose the category and subcategory from the following list:\n{categories}\n
@@ -34,8 +34,7 @@ def generate_category(description1, description2, categories_csv):
                Lunch (Subcategory)\n
                Happy Burger (Note)\n
                (End of output)"""}
-    ]
-    )
+    ])
 
     try:
         generated_content = response['choices'][0]['message']['content'].strip()
