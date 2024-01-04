@@ -1,4 +1,5 @@
 import pandas as pd
+from AI_categorization import generate_category
 import re
 
 # Specify the path to your CSV file
@@ -184,7 +185,13 @@ def categorize_expense_from_descriptions(description1, description2, mappings_df
         if re.match(pattern1, description1) and (pattern2 is None or re.match(pattern2, description2)):
             return (row['Category'], row['Subcategory'], row['Note'])
     # By this point, if the category was not found, create a category
-    return handle_unknown_categorization(description1, description2,categorizer_csv, categories_csv)
+
+    # Manual entry
+    #return handle_unknown_categorization(description1, description2,categorizer_csv, categories_csv)
+
+    # AI entry
+    ai_categorization = generate_category(description1, description2, categories_csv)
+    return tuple(ai_categorization.split('\n'))
     #return ("Unknown", "Unknown", "No note available")
 #}}}
 #}}}
@@ -211,7 +218,7 @@ categorizer_csv = 'descriptions_categorization.csv'  # Replace with the path to 
 categories_csv = 'categories.csv'
 mappings_df = read_mappings(categorizer_csv)
 
-categorizator_i = 100
+categorizator_i = 99
 print(df.iloc[categorizator_i])
 
 category, subcategory, note = categorize_ith_expense(df, categorizator_i, mappings_df, categories_csv, categorizer_csv)
