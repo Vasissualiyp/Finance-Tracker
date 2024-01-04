@@ -58,7 +58,7 @@ def extract_to_df(file_path): #{{{
 
 # Categorization {{{
 
-def categorize_ith_expense(df, i, mappings_df): #{{{
+def categorize_ith_expense(df, i, mappings_df, categories_csv, categorizer_csv): #{{{
     """
     Categorizes the ith expense in a DataFrame based on descriptions and mappings.
 
@@ -75,7 +75,7 @@ def categorize_ith_expense(df, i, mappings_df): #{{{
         return ("Index out of range", None, None)
 
     description1, description2 = extract_descriptions(df, i)
-    return categorize_expense_from_descriptions(description1, description2, mappings_df)
+    return categorize_expense_from_descriptions(description1, description2, mappings_df, categories_csv, categorizer_csv)
 #}}}
 
 def extract_descriptions(df, i):#{{{
@@ -112,9 +112,51 @@ def read_mappings(csv_file):#{{{
     return pd.read_csv(csv_file)
 #}}}
 
-def categorize_expense_from_descriptions(description1, description2, mappings_df): #{{{
+def handle_unknown_categorization(description1, description2, categorizer_csv, categories_csv): #{{{
     """
-    Categorizes an expense based on given descriptions and mappings with weak correspondence.
+    Handles 'Unknown' categorizations by prompting the user to select a category, subcategory,
+    and add a note. Updates the categorizer CSV file with the new mapping.
+
+    Args:
+    description1 (str): The first description of the expense.
+    description2 (str): The second description of the expense, can be NaN.
+    categorizer_csv (str): Path to the CSV file containing description-category mappings.
+    categories_csv (str): Path to the CSV file containing category and subcategory listings.
+    """
+    # Load categories and subcategories
+    categories_df = pd.read_csv(categories_csv)
+    categories = categories_df['Category'].unique()
+    
+    print("Please choose a category:")
+    for i, category in enumerate(categories, 1):
+        print(f"{i}. {category}")
+    category_choice = int(input("Enter the number of your choice: "))
+    chosen_category = categories[category_choice - 1]
+
+    subcategories = categories_df[categories_df['Category'] == chosen_category]['Subcategory']
+    print("\nPlease choose a subcategory:")
+    for i, subcategory in enumerate(subcategories, 1):
+        print(f"{i}. {subcategory}")
+    subcategory_choice = int(input("Enter the number of your choice: "))
+    chosen_subcategory = subcategories.iloc[subcategory_choice - 1]
+
+    note = input("\nEnter a note for this expense: ")
+
+    # Update the categorizer CSV
+    new_row = {'Description 1': description1, 'Description 2': description2, 
+               'Category': chosen_category, 'Subcategory': chosen_subcategory, 'Note': note}
+    categorizer_df = pd.read_csv(categorizer_csv)
+    new_row_df = pd.DataFrame([new_row])
+    categorizer_df = pd.concat([categorizer_df, new_row_df], ignore_index=True)
+    #categorizer_df = categorizer_df.append(new_row, ignore_index=True)
+    categorizer_df.to_csv(categorizer_csv, index=False)
+
+    return chosen_category, chosen_subcategory, note
+#}}}
+
+def categorize_expense_from_descriptions(description1, description2, mappings_df, categories_csv, categorizer_csv): #{{{
+    """
+    Categorizes an expense based on given descriptions and mappings. * is considered an 'any' character.
 
     Args:
     description1 (str): The first description of the expense.
@@ -141,8 +183,9 @@ def categorize_expense_from_descriptions(description1, description2, mappings_df
 
         if re.match(pattern1, description1) and (pattern2 is None or re.match(pattern2, description2)):
             return (row['Category'], row['Subcategory'], row['Note'])
-
-    return ("Unknown", "Unknown", "No note available")
+    # By this point, if the category was not found, create a category
+    return handle_unknown_categorization(description1, description2,categorizer_csv, categories_csv)
+    #return ("Unknown", "Unknown", "No note available")
 #}}}
 #}}}
 
@@ -164,13 +207,14 @@ print(account_types)
 print("---Categorization begin---")
 
 # Example usage
-csv_file = 'descriptions_categorization.csv'  # Replace with the path to your CSV file
-mappings_df = read_mappings(csv_file)
+categorizer_csv = 'descriptions_categorization.csv'  # Replace with the path to your CSV file
+categories_csv = 'categories.csv'
+mappings_df = read_mappings(categorizer_csv)
 
-categorizator_i = 101
+categorizator_i = 100
 print(df.iloc[categorizator_i])
 
-category, subcategory, note = categorize_ith_expense(df, categorizator_i, mappings_df)
+category, subcategory, note = categorize_ith_expense(df, categorizator_i, mappings_df, categories_csv, categorizer_csv)
 print(f"Category: {category}, Subcategory: {subcategory}, Note: {note}")
 
 
