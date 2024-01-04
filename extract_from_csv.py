@@ -1,4 +1,5 @@
 import pandas as pd
+import re
 
 # Specify the path to your CSV file
 transactions_file = 'Funds.csv'
@@ -55,10 +56,101 @@ def extract_to_df(file_path): #{{{
     return df
 #}}}
 
+# Categorization {{{
+
+def categorize_ith_expense(df, i, mappings_df): #{{{
+    """
+    Categorizes the ith expense in a DataFrame based on descriptions and mappings.
+
+    Args:
+    df (DataFrame): The DataFrame containing the expenses.
+    i (int): The index of the expense to categorize in the DataFrame.
+    mappings_df (DataFrame): The DataFrame containing the mappings for categorization.
+
+    Returns:
+    tuple: A tuple containing the category, subcategory, and note for the ith expense.
+           Returns ("Index out of range", None, None) if the index is out of bounds.
+    """
+    if i < 0 or i >= len(df):
+        return ("Index out of range", None, None)
+
+    description1, description2 = extract_descriptions(df, i)
+    return categorize_expense_from_descriptions(description1, description2, mappings_df)
+#}}}
+
+def extract_descriptions(df, i):#{{{
+    """
+    Extracts the descriptions from the ith row of a DataFrame.
+
+    Args:
+    df (DataFrame): The DataFrame from which to extract descriptions.
+    i (int): The index of the row from which to extract descriptions.
+
+    Returns:
+    tuple: A tuple containing the values of 'Description 1' and 'Description 2' from the ith row.
+           Returns (None, None) if the index is out of bounds.
+    """
+    if i < 0 or i >= len(df):
+        return (None, None)
+    
+    description1 = df.at[i, 'Description 1'] if 'Description 1' in df.columns else None
+    description2 = df.at[i, 'Description 2'] if 'Description 2' in df.columns else None
+    
+    return (description1, description2)
+#}}}
+
+def read_mappings(csv_file):#{{{
+    """
+    Reads the mappings from a CSV file and returns a DataFrame.
+
+    Args:
+    csv_file (str): The path to the CSV file containing the mappings.
+
+    Returns:
+    DataFrame: The DataFrame containing the mappings.
+    """
+    return pd.read_csv(csv_file)
+#}}}
+
+def categorize_expense_from_descriptions(description1, description2, mappings_df): #{{{
+    """
+    Categorizes an expense based on given descriptions and mappings with weak correspondence.
+
+    Args:
+    description1 (str): The first description of the expense.
+    description2 (str): The second description of the expense, can be NaN.
+    mappings_df (DataFrame): The DataFrame containing the mappings.
+
+    Returns:
+    tuple: A tuple containing the category, subcategory, and note.
+    """
+    # Handling NaN values
+    description1 = description1 if pd.notna(description1) else ""
+    description2 = description2 if pd.notna(description2) else ""
+
+    def regex_from_pattern(pattern):
+        """
+        Converts a pattern with '*' into a regex pattern.
+        '*' is replaced with '.*' to match any character sequence.
+        """
+        return '^' + re.escape(pattern).replace('\\*', '.*') + '$'
+
+    for _, row in mappings_df.iterrows():
+        pattern1 = regex_from_pattern(row['Description 1'])
+        pattern2 = regex_from_pattern(row['Description 2']) if pd.notna(row['Description 2']) else None
+
+        if re.match(pattern1, description1) and (pattern2 is None or re.match(pattern2, description2)):
+            return (row['Category'], row['Subcategory'], row['Note'])
+
+    return ("Unknown", "Unknown", "No note available")
+#}}}
+#}}}
+
 def alter_transactions_df(account_translations_file, df): #{{{
     df = df.rename(columns={'Transaction Date': 'Date'})
     df = df.drop("Cheque Number", axis=1)
     df = replace_account_numbers(account_translations_file, df)
+    #df = df.rename(columns={'Account Number': 'Account'}) # So far, breaks the code. But crucial for a final xlsx file
     return df
 #}}}
     
@@ -68,6 +160,26 @@ df, account_numbers, account_types = df_to_csv_main(transactions_file, account_t
 print(df)
 print(account_numbers)
 print(account_types)
+
+print("---Categorization begin---")
+
+# Example usage
+csv_file = 'descriptions_categorization.csv'  # Replace with the path to your CSV file
+mappings_df = read_mappings(csv_file)
+
+categorizator_i = 101
+print(df.iloc[categorizator_i])
+
+category, subcategory, note = categorize_ith_expense(df, categorizator_i, mappings_df)
+print(f"Category: {category}, Subcategory: {subcategory}, Note: {note}")
+
+
+"""
+for i in range(0, len(df)):
+    Descript1 = df.at[i, 'Description 1']
+    if 'Payment' in Descript1:
+        print(df.iloc[i])
+"""
 
 #for i in range(0, len(df["Account Type"])):
     #print(df["Description 1"][i])
