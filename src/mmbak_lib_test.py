@@ -5,7 +5,7 @@ from mmbak_analysis_lib.currencies_analysis import get_currencies
 from datetime import datetime, timezone
 
 # Path to your mmbak file
-mmbak_file_path = 'MMAuto[GF231230](2023-12-30-115403).mmbak'
+mmbak_file_path = './data/MMAuto[GF231230](2023-12-30-115403).mmbak'
 
 # Initialize the database driver
 db_driver = DbDriver(mmbak_file_path)

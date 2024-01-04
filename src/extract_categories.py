@@ -27,5 +27,5 @@ def generate_category_subcategory_csv(excel_file_path, csv_file_path):
 
 # Example usage
 excel_file_path = 'path_to_your_xlsx_MoneyManager_file.xlsx'  # Replace with the path to your Excel file
-csv_file_path = 'categories.csv'
+csv_file_path = '../config/categories.csv'
 generate_category_subcategory_csv(excel_file_path, csv_file_path)
