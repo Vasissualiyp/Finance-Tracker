@@ -3,8 +3,10 @@ from AI_categorization import generate_category
 import re
 
 # Specify the path to your CSV file
-transactions_file = 'Funds.csv'
-account_translations_file = 'accounts.csv'
+transactions_file = './data/Funds.csv'
+account_translations_file = './config/accounts.csv'
+categorizer_csv = './config/descriptions_categorization.csv'  # Replace with the path to your CSV file
+categories_csv = './config/categories.csv'
 
 def df_to_csv_main(transactions_data_file, account_translations_file): #{{{
     df= extract_to_df(transactions_data_file)
@@ -214,8 +216,6 @@ print(account_types)
 print("---Categorization begin---")
 
 # Example usage
-categorizer_csv = 'descriptions_categorization.csv'  # Replace with the path to your CSV file
-categories_csv = 'categories.csv'
 mappings_df = read_mappings(categorizer_csv)
 
 categorizator_i = 99
