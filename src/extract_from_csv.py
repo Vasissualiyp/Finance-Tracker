@@ -9,7 +9,7 @@ account_translations_file = './config/accounts.csv' # Path for the file to conve
 categorizer_csv = './config/descriptions_categorization.csv'  # Path to conversion of descriptions to categories
 categories_csv = './config/categories.csv' # Path to the list of categories
 total_xlsx = './data/Money Manager - Excel 2023-01-01 ~ 2023-12-31.xlsx' # Path to excel file with all previous transaction data (MM format)
-file_locations = (transactions_file, account_translations_file, categorizer_csv, categories_csv) 
+file_locations = (transactions_file, account_translations_file, categorizer_csv, categories_csv, total_xlsx) 
 
 #-------------------------SOURCE CODE---------------------------------- {{{
 def df_to_csv_main(transactions_data_file, account_translations_file): #{{{
@@ -176,6 +176,25 @@ def read_excel_to_df(file_path, sheet_name=0): #{{{
         raise ValueError(f"Sheet '{sheet_name}' not found in the Excel file.")
 #}}}
 
+def remove_duplicate_transactions(df): #{{{
+    """
+    Removes duplicate transactions from a DataFrame based on specific columns.
+
+    Args:
+    df (pd.DataFrame): The DataFrame from which to remove duplicate transactions.
+
+    Returns:
+    pd.DataFrame: A new DataFrame with duplicate transactions removed.
+    """
+    # Columns to consider for identifying duplicates
+    columns_to_check = ['Date', 'Account', 'CAD', 'Income/Expense', 'Currency', 'Amount']
+
+    # Remove duplicates
+    df_without_duplicates = df.drop_duplicates(subset=columns_to_check, keep='first')
+
+    return df_without_duplicates
+#}}}
+
 def create_extra_column(df): #{{{
     """ 
     We need to create an extra copy of the 'Amount' column in order to make the xlsx readable by MoneyManager
@@ -189,7 +208,34 @@ def create_extra_column(df): #{{{
     df = df[columns]
     
     # Rename the last column to 'Account'
-    df.columns = [*df.columns[:-1], 'Account']
+    df.columns = [*df.columns[:-1], 'Account.1']
+    return df
+#}}}
+
+def rename_last_column(df, new_name): #{{{
+    """
+    Renames the last column of a pandas DataFrame.
+
+    Args:
+    df (pd.DataFrame): The DataFrame whose last column needs to be renamed.
+    new_name (str): The new name for the last column.
+
+    Returns:
+    pd.DataFrame: The DataFrame with the last column renamed.
+    """
+    # Ensure the DataFrame has at least one column
+    if len(df.columns) == 0:
+        raise ValueError("DataFrame has no columns to rename.")
+
+    # Get a list of the current column names
+    column_names = df.columns.tolist()
+
+    # Change the name of the last column
+    column_names[-1] = new_name
+
+    # Assign the new list of column names to the DataFrame
+    df.columns = column_names
+
     return df
 #}}}
 
@@ -237,8 +283,9 @@ def main(file_locations): #{{{
                             - Path to the account translations file.
                             - Path to the CSV file containing categorizer data.
                             - Path to the CSV file containing categories.
+                            - Path to the xlsx file containing all previous transactions.
     """
-    transactions_file, account_translations_file, categorizer_csv, categories_csv = file_locations
+    transactions_file, account_translations_file, categorizer_csv, categories_csv, total_xlsx = file_locations
 
     df, account_numbers, account_types = df_to_csv_main(transactions_file, account_translations_file)
     mappings_df = read_mappings(categorizer_csv)
@@ -246,10 +293,15 @@ def main(file_locations): #{{{
     df = convert_rbc_df_to_MMxlsx(df, mappings_df, categories_csv, categorizer_csv)
 
     # Obtain dataframe with all data
-    df_total = read_excel_to_df('./data/Money Manager - Excel 2023-01-01 ~ 2023-12-31.xlsx','Money Manager')
-    print(df_total)
+    df_total = read_excel_to_df(total_xlsx,'Money Manager')
+    df_total = rename_last_column(df_total, 'Account.1')
+
+    # Join the new and old transactions dataframes
+    df = df.reset_index(drop=True)
+    df_total = df_total.reset_index(drop=True)
+    concatenated_df = pd.concat([df, df_total], ignore_index=True)
  
-    print(df)
+    print(concatenated_df.iloc[0])
     
     """
     for i in range(0, len(df)):
