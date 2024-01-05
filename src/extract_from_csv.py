@@ -60,13 +60,53 @@ def extract_to_df(file_path): #{{{
 #}}}
 
 def alter_transactions_df(account_translations_file, df): #{{{
+    """
+    This is first alteration of transactions dataframe.
+    Needed for converting the dataframe to the format, which the code can work with. 
+    """
     df = df.rename(columns={'Transaction Date': 'Date'})
     df = df.drop("Cheque Number", axis=1)
     df = replace_account_numbers(account_translations_file, df)
-    #df = df.rename(columns={'Account Number': 'Account'}) # So far, breaks the code. But crucial for a final xlsx file
+    return df
+#}}}
+
+def convert_df_to_MMxl_format(df): # {{{
+    """
+    This function converts the dataframe to the xlsx format, used in MoneyManager
+    """
+    df = df.rename(columns={'Account Number': 'Account'}) 
+    # Add extra columns
+    df["CAD$"] = df["CAD"] 
+    df["Income/Expense"] = None
+    df["Description"] = None
+    df["Amount"] = None
+    df["Currency"] = None
+
+    # Remove not needed columns
+    df = df.drop("Account Type", axis=1)
+    df = df.drop("Description 1", axis=1)
+    df = df.drop("Description 2", axis=1)
+    df = df.drop("CAD$", axis=1)
+    df = df.drop("USD$", axis=1)
     return df
 #}}}
     
+def sort_ith_expense(df, i): #{{{
+    """
+    Assigns values to Income/Expense column
+
+    Args:
+    df (DataFrame): The DataFrame for which to assign the Income/Expense values.
+    i (int): The index of the row for which to assign the Income/Expense values.
+    """
+    money_difference = df.at[i, "CAD"]
+    if money_difference > 0:
+        income_expense = "Income"
+    else:
+        income_expense = "Expense"
+    return income_expense
+#}}}
+
 df, account_numbers, account_types = df_to_csv_main(transactions_file, account_translations_file)
 # Display the DataFrame
 
@@ -79,11 +119,13 @@ print("---Categorization begin---")
 # Example usage
 mappings_df = read_mappings(categorizer_csv)
 
-categorizator_i = 54
+categorizator_i = 53
 print(df.iloc[categorizator_i])
 
 category, subcategory, note = categorize_ith_expense(df, categorizator_i, mappings_df, categories_csv, categorizer_csv)
 print(f"Category: {category}, Subcategory: {subcategory}, Note: {note}")
+print("---Categorization end---")
+
 
 
 """
