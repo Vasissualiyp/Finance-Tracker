@@ -61,6 +61,18 @@ def extract_to_df(file_path): #{{{
 
 # Categorization {{{
 
+def convert_ai_tuple(generated_tuple):
+    tuple_length = len(generated_tuple)
+    if tuple_length == 5:
+        category, _, subcategory, _, note = generated_tuple
+    elif tuple_length == 3:
+        category, subcategory, note = generated_tuple
+    else:
+        print(f"Length of the ai-generated_response is {tuple_length}")
+
+    return (category, subcategory, note)
+
+
 def categorize_ith_expense(df, i, mappings_df, categories_csv, categorizer_csv): #{{{
     """
     Categorizes the ith expense in a DataFrame based on descriptions and mappings.
@@ -193,7 +205,9 @@ def categorize_expense_from_descriptions(description1, description2, mappings_df
 
     # AI entry
     ai_categorization = generate_category(description1, description2, categories_csv)
-    return tuple(ai_categorization.split('\n'))
+    categorization = tuple(ai_categorization.split('\n'))
+    category, subcategory, note = convert_ai_tuple(categorization)
+    return(category, subcategory, note)
     #return ("Unknown", "Unknown", "No note available")
 #}}}
 #}}}
@@ -218,7 +232,7 @@ print("---Categorization begin---")
 # Example usage
 mappings_df = read_mappings(categorizer_csv)
 
-categorizator_i = 99
+categorizator_i = 55
 print(df.iloc[categorizator_i])
 
 category, subcategory, note = categorize_ith_expense(df, categorizator_i, mappings_df, categories_csv, categorizer_csv)

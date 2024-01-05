@@ -22,27 +22,32 @@ def generate_category(description1, description2, categories_csv):
         return
 
     # Generate content for the homework (Assuming you have initialized openai before this)
-    response = client.chat.completions.create(model="gpt-3.5-turbo",  # or the model you are using
+    response = client.chat.completions.create(model="gpt-4-turbo",  # or the model you are using
     messages=[
         {"role": "user", "content": f"""For the following description of transaction:\n{transaction_description}\n
                Choose the category and subcategory from the following list:\n{categories}\n
-               Next, put the vendor. Separate each of these answers by a new line.\n
-               Example: for the transaction HAPPY BURGER TORONTO ON, your output should (omitting parts in brackets and extra spaces) 
+               Next, put the vendor. Separate each of these answers by a new line, so your response should be exactly 3 lines - other lengths are unnaceptable.\n
+               You also should remove any extra parts from the response based on your judgement (i.e. transaction number).\n
+               Example: for the transaction HAPPY BURGER #1234 TORONTO ON, your output should (omitting parts in brackets) 
                look exactly like this:\n
                (Beginning of output)\n
-               Food (Category)\n
-               Lunch (Subcategory)\n
-               Happy Burger (Note)\n
+               Food\n
+               Lunch\n
+               Happy Burger\n
                (End of output)"""}
     ])
 
     try:
-        generated_content = response['choices'][0]['message']['content'].strip()
+        #generated_content = response['choices'][0]['message']['content'].strip()
+        generated_content = response.choices[0].message.content.strip()
     except KeyError as e:
         print(f"KeyError: {e}")
         print("Could not find the required key in the response.")
         return
 
+    print("AI-generated response begin:")
+    print(generated_content)
+    print("AI-generated response end:")
     return generated_content
 
 if __name__ == "__main__":
