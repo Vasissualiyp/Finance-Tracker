@@ -70,17 +70,22 @@ def alter_transactions_df(account_translations_file, df): #{{{
     return df
 #}}}
 
-def convert_df_to_MMxl_format(df): # {{{
+def convert_df_to_MMxl_format_preCategory(df): # {{{
     """
-    This function converts the dataframe to the xlsx format, used in MoneyManager
+    This function converts the dataframe to the xlsx format, used in MoneyManager.
+    The dataframe is not fully ready to be used in the MoneyManager yet - categorization needs to be performed first
+    Also, the order is not the same yet.
     """
     df = df.rename(columns={'Account Number': 'Account'}) 
     # Add extra columns
-    df["CAD$"] = df["CAD"] 
+    df["CAD"] = df["CAD$"] 
     df["Income/Expense"] = None
-    df["Description"] = None
+    df["Description"] = ''
     df["Amount"] = None
     df["Currency"] = None
+    df["Category"] = None
+    df["Subcategory"] = None
+    df["Note"] = None
 
     # Remove not needed columns
     df = df.drop("Account Type", axis=1)
@@ -88,9 +93,25 @@ def convert_df_to_MMxl_format(df): # {{{
     df = df.drop("Description 2", axis=1)
     df = df.drop("CAD$", axis=1)
     df = df.drop("USD$", axis=1)
+
+    # Convert the 'Date' column to datetime objects
+    df['Date'] = pd.to_datetime(df['Date'], format='%m/%d/%Y')
+    # Convert the datetime objects back to strings in the desired format
+    df['Date'] = df['Date'].dt.strftime('%Y/%m/%d')
+
+    # Define the desired column order
+    new_column_order = [
+        'Date', 'Account', 'Category', 'Subcategory', 'Note',
+        'CAD', 'Income/Expense', 'Description', 'Amount', 'Currency'
+    ]
+    df = df[new_column_order]
     return df
 #}}}
-    
+
+def convert_df_to_MMxl_format_final(df): # {{{
+    return df
+#}}}
+
 def sort_ith_expense(df, i): #{{{
     """
     Assigns values to Income/Expense column
@@ -107,6 +128,29 @@ def sort_ith_expense(df, i): #{{{
     return income_expense
 #}}}
 
+def write_to_df_row(df, i, category, subcategory, note): #{{{
+    """
+    Updates the DataFrame with new expense information for the specified row index.
+
+    Args:
+    df (pd.DataFrame): The DataFrame containing expense data.
+    i (int): Index of the row to update.
+    category (str): The new category value.
+    subcategory (str): The new subcategory value.
+    note (str): The new note value.
+    """
+    # Assuming sort_ith_expense is a function defined elsewhere
+    income_expense = sort_ith_expense(df, i)
+
+    df.loc[i, "Category"] = category
+    df.loc[i, "Subcategory"] = subcategory
+    df.loc[i, "Note"] = note
+    df.loc[i, "Income/Expense"] = income_expense
+    df.loc[i, "CAD"] = abs(df.loc[i, "CAD"])
+    df.loc[i, "Amount"] = df.loc[i, "CAD"]
+    df.loc[i, "Currency"] = "CAD"
+#}}}
+
 df, account_numbers, account_types = df_to_csv_main(transactions_file, account_translations_file)
 # Display the DataFrame
 
@@ -114,19 +158,21 @@ print(df)
 print(account_numbers)
 print(account_types)
 
-print("---Categorization begin---")
+print("---Categorization begin---") #{{{
 
 # Example usage
 mappings_df = read_mappings(categorizer_csv)
 
 categorizator_i = 53
-print(df.iloc[categorizator_i])
 
 category, subcategory, note = categorize_ith_expense(df, categorizator_i, mappings_df, categories_csv, categorizer_csv)
 print(f"Category: {category}, Subcategory: {subcategory}, Note: {note}")
-print("---Categorization end---")
 
+print("---Categorization end---") #}}}
 
+df = convert_df_to_MMxl_format_preCategory(df)
+write_to_df_row(df, categorizator_i, category, subcategory, note)
+print(df.iloc[categorizator_i])
 
 """
 for i in range(0, len(df)):
@@ -134,8 +180,4 @@ for i in range(0, len(df)):
     if 'Payment' in Descript1:
         print(df.iloc[i])
 """
-
-#for i in range(0, len(df["Account Type"])):
-    #print(df["Description 1"][i])
-    #print(df["Description 2"][i])
 
