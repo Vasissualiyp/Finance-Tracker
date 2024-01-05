@@ -1,13 +1,17 @@
+# Author: Vasilii Pustovoit. 01/2024.
 import re
 import pandas as pd
 from categorization import convert_ai_tuple, categorize_ith_expense, extract_descriptions, read_mappings, user_edit_categorization, categorize_expense_from_descriptions, write_new_category
 
-# Specify the path to your CSV file
-transactions_file = './data/Funds.csv'
-account_translations_file = './config/accounts.csv'
-categorizer_csv = './config/descriptions_categorization.csv'  # Replace with the path to your CSV file
-categories_csv = './config/categories.csv'
+# Specify the path to your CSV files
+transactions_file = './data/Funds.csv' # Path for RBC transactions file
+account_translations_file = './config/accounts.csv' # Path for the file to convert from RBC account names to MM (MoneyManager)
+categorizer_csv = './config/descriptions_categorization.csv'  # Path to conversion of descriptions to categories
+categories_csv = './config/categories.csv' # Path to the list of categories
+total_xlsx = './data/Money Manager - Excel 2023-01-01 ~ 2023-12-31.xlsx' # Path to excel file with all previous transaction data (MM format)
+file_locations = (transactions_file, account_translations_file, categorizer_csv, categories_csv) 
 
+#-------------------------SOURCE CODE---------------------------------- {{{
 def df_to_csv_main(transactions_data_file, account_translations_file): #{{{
     df= extract_to_df(transactions_data_file)
     df = alter_transactions_df(account_translations_file, df)
@@ -108,10 +112,6 @@ def convert_df_to_MMxl_format_preCategory(df): # {{{
     return df
 #}}}
 
-def convert_df_to_MMxl_format_final(df): # {{{
-    return df
-#}}}
-
 def sort_ith_expense(df, i): #{{{
     """
     Assigns values to Income/Expense column
@@ -151,33 +151,113 @@ def write_to_df_row(df, i, category, subcategory, note): #{{{
     df.loc[i, "Currency"] = "CAD"
 #}}}
 
-df, account_numbers, account_types = df_to_csv_main(transactions_file, account_translations_file)
-# Display the DataFrame
+def read_excel_to_df(file_path, sheet_name=0): #{{{
+    """
+    Reads an Excel file into a pandas DataFrame.
 
-print(df)
-print(account_numbers)
-print(account_types)
+    Args:
+    file_path (str): The path to the Excel file.
+    sheet_name (str or int, optional): The name or index of the sheet to read.
+                                       Default is 0, which reads the first sheet.
 
-print("---Categorization begin---") #{{{
+    Returns:
+    pd.DataFrame: DataFrame containing the contents of the specified Excel sheet.
 
-# Example usage
-mappings_df = read_mappings(categorizer_csv)
+    Raises:
+    FileNotFoundError: If the file at the specified path does not exist.
+    ValueError: If the specified sheet_name is not found in the Excel file.
+    """
+    try:
+        # Read the Excel file
+        return pd.read_excel(file_path, sheet_name=sheet_name)
+    except FileNotFoundError:
+        raise FileNotFoundError(f"No file found at specified path: {file_path}")
+    except ValueError:
+        raise ValueError(f"Sheet '{sheet_name}' not found in the Excel file.")
+#}}}
 
-categorizator_i = 53
+def create_extra_column(df): #{{{
+    """ 
+    We need to create an extra copy of the 'Amount' column in order to make the xlsx readable by MoneyManager
+    """
+    # Create a new column 'Account' (duplicate) with values from 'Amount'
+    df['Account_Duplicate'] = df['Amount']
+    
+    # If you want to place this new column at the end, you can reorder the DataFrame
+    columns = df.columns.tolist()
+    columns.append(columns.pop(columns.index('Account_Duplicate')))
+    df = df[columns]
+    
+    # Rename the last column to 'Account'
+    df.columns = [*df.columns[:-1], 'Account']
+    return df
+#}}}
 
-category, subcategory, note = categorize_ith_expense(df, categorizator_i, mappings_df, categories_csv, categorizer_csv)
-print(f"Category: {category}, Subcategory: {subcategory}, Note: {note}")
+def convert_rbc_df_to_MMxlsx(df, mappings_df, categories_csv, categorizer_csv): #{{{
+    """
+    Converts a DataFrame into the format required by MoneyManager Excel file,
+    categorizing each transaction and formatting the DataFrame accordingly.
 
-print("---Categorization end---") #}}}
+    Args:
+    df (pd.DataFrame): DataFrame containing transaction data.
+    mappings_df (pd.DataFrame): DataFrame containing mappings for categorization.
+    categories_csv (str): Path to the CSV file containing categories.
+    categorizer_csv (str): Path to the CSV file containing categorizer data.
 
-df = convert_df_to_MMxl_format_preCategory(df)
-write_to_df_row(df, categorizator_i, category, subcategory, note)
-print(df.iloc[categorizator_i])
+    Returns:
+    pd.DataFrame: DataFrame formatted for MoneyManager Excel file.
+    """
+    len_df = 1
+    #len_df = len(df)
 
-"""
-for i in range(0, len(df)):
-    Descript1 = df.at[i, 'Description 1']
-    if 'Payment' in Descript1:
-        print(df.iloc[i])
-"""
+    # Categorize every transaction (row) in the array
+    for i in range(len_df):
+        category, subcategory, note = categorize_ith_expense(df, i, mappings_df, categories_csv, categorizer_csv)
 
+    df = convert_df_to_MMxl_format_preCategory(df)
+
+    # Fill in entries in the dataframe according to the format of MoneyManager xlsx file
+    for i in range(len_df):
+        write_to_df_row(df, i, category, subcategory, note)
+
+    # Last edit to align with the MoneyManager formatting
+    df = create_extra_column(df)
+
+    return df
+#}}}
+
+def main(file_locations): #{{{
+    """
+    Main function to process transaction files and convert them into the
+    format required by MoneyManager Excel file.
+
+    Args:
+    file_locations (tuple): A tuple containing paths to the files. The tuple should contain:
+                            - Path to the transactions file.
+                            - Path to the account translations file.
+                            - Path to the CSV file containing categorizer data.
+                            - Path to the CSV file containing categories.
+    """
+    transactions_file, account_translations_file, categorizer_csv, categories_csv = file_locations
+
+    df, account_numbers, account_types = df_to_csv_main(transactions_file, account_translations_file)
+    mappings_df = read_mappings(categorizer_csv)
+
+    df = convert_rbc_df_to_MMxlsx(df, mappings_df, categories_csv, categorizer_csv)
+
+    # Obtain dataframe with all data
+    df_total = read_excel_to_df('./data/Money Manager - Excel 2023-01-01 ~ 2023-12-31.xlsx','Money Manager')
+    print(df_total)
+ 
+    print(df)
+    
+    """
+    for i in range(0, len(df)):
+        Descript1 = df.at[i, 'Description 1']
+        if 'Payment' in Descript1:
+            print(df.iloc[i])
+    """
+#}}}
+#-------------------------SOURCE CODE END------------------------------ }}}
+
+main(file_locations)
