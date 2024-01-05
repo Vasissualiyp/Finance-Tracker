@@ -195,20 +195,32 @@ def remove_duplicate_transactions(df): #{{{
     return df_without_duplicates
 #}}}
 
+def write_df_to_excel(df, file_path, sheet_name='Sheet1'): #{{{
+    """
+    Writes a DataFrame to an Excel file with a custom sheet name.
+
+    Args:
+    df (pd.DataFrame): The DataFrame to be written to the Excel file.
+    file_path (str): The path where the Excel file will be saved.
+    sheet_name (str): The name of the sheet in the Excel file. Default is 'Sheet1'.
+    """
+    # Write the DataFrame to an Excel file
+    with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
+        df.to_excel(writer, sheet_name=sheet_name, index=False)
+#}}}
+
 def create_extra_column(df): #{{{
     """ 
     We need to create an extra copy of the 'Amount' column in order to make the xlsx readable by MoneyManager
     """
     # Create a new column 'Account' (duplicate) with values from 'Amount'
-    df['Account_Duplicate'] = df['Amount']
+    df['Account.1'] = df['Amount']
     
     # If you want to place this new column at the end, you can reorder the DataFrame
     columns = df.columns.tolist()
-    columns.append(columns.pop(columns.index('Account_Duplicate')))
+    columns.append(columns.pop(columns.index('Account.1')))
     df = df[columns]
     
-    # Rename the last column to 'Account'
-    df.columns = [*df.columns[:-1], 'Account.1']
     return df
 #}}}
 
@@ -286,6 +298,7 @@ def main(file_locations): #{{{
                             - Path to the xlsx file containing all previous transactions.
     """
     transactions_file, account_translations_file, categorizer_csv, categories_csv, total_xlsx = file_locations
+    output_xlsx_path = './data/Funds2.xlsx'
 
     df, account_numbers, account_types = df_to_csv_main(transactions_file, account_translations_file)
     mappings_df = read_mappings(categorizer_csv)
@@ -299,9 +312,14 @@ def main(file_locations): #{{{
     # Join the new and old transactions dataframes
     df = df.reset_index(drop=True)
     df_total = df_total.reset_index(drop=True)
-    concatenated_df = pd.concat([df, df_total], ignore_index=True)
+    df_joined = pd.concat([df, df_total], ignore_index=True)
+    df_joined = df_joined.sort_values(by='Date')
+
+    df_joined = rename_last_column(df_joined, 'Account')
+    write_df_to_excel(df_joined, output_xlsx_path, sheet_name='Money Manager')
+    print("Export to xlsx is complete!")
  
-    print(concatenated_df.iloc[0])
+    print(df_joined.iloc[0])
     
     """
     for i in range(0, len(df)):
