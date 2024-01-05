@@ -271,7 +271,7 @@ def convert_rbc_df_to_MMxlsx(df, mappings_df, categories_csv, categorizer_csv): 
     # Categorize every transaction (row) in the array
     for i in range(len_df):
         category, subcategory, note = categorize_ith_expense(df, i, mappings_df, categories_csv, categorizer_csv)
-        print(f"Categorized {i} transactions out of {len_df}", end='\r', flush=True))
+        print(f"Categorized {i} transactions out of {len_df}")
     print()
 
     df = convert_df_to_MMxl_format_preCategory(df)
@@ -279,7 +279,7 @@ def convert_rbc_df_to_MMxlsx(df, mappings_df, categories_csv, categorizer_csv): 
     # Fill in entries in the dataframe according to the format of MoneyManager xlsx file
     for i in range(len_df):
         write_to_df_row(df, i, category, subcategory, note)
-        print(f"Wrote {i} transactions out of {len_df}", end='\r', flush=True))
+        print(f"Wrote {i} transactions out of {len_df}")
     print()
 
     # Last edit to align with the MoneyManager formatting
