@@ -1,0 +1,4 @@
+xlrd
+pandas
+openpyxl
+openai
