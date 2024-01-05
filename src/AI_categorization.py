@@ -7,7 +7,7 @@ from datetime import datetime
 
 # Initialize the OpenAI API client (as you did before, not included here)
 #openai.api_key = ""
-model_engine = "gpt-3.5-turbo"
+model_engine = "gpt-4"
 
 def generate_category(description1, description2, categories_csv):
 
@@ -22,11 +22,15 @@ def generate_category(description1, description2, categories_csv):
         return
 
     # Generate content for the homework (Assuming you have initialized openai before this)
-    response = client.chat.completions.create(model="gpt-4-turbo",  # or the model you are using
+    response = client.chat.completions.create(model=model_engine,  # or the model you are using
     messages=[
         {"role": "user", "content": f"""For the following description of transaction:\n{transaction_description}\n
                Choose the category and subcategory from the following list:\n{categories}\n
-               Next, put the vendor. Separate each of these answers by a new line, so your response should be exactly 3 lines - other lengths are unnaceptable.\n
+               (You can choose a category with an empty subcategory, even if this pair is not on the list)\n
+               Next, put the vendor or other ways in which I can identify the transaction. \n
+               Separate each of these answers by a new line, so your response should be exactly 3 lines - other lengths are unnaceptable.
+               use single newline character, not double newline.\n
+               If information given is not enough to even take a guess for ALL 3 fields, just set up the category as 'Other' without a subcategory.\n
                You also should remove any extra parts from the response based on your judgement (i.e. transaction number).\n
                Example: for the transaction HAPPY BURGER #1234 TORONTO ON, your output should (omitting parts in brackets) 
                look exactly like this:\n
