@@ -1,6 +1,6 @@
 import re
 import pandas as pd
-from categorization import convert_ai_tuple, categorize_ith_expense, extract_descriptions, read_mappings, handle_unknown_categorization, categorize_expense_from_descriptions
+from categorization import convert_ai_tuple, categorize_ith_expense, extract_descriptions, read_mappings, user_edit_categorization, categorize_expense_from_descriptions, write_new_category
 
 # Specify the path to your CSV file
 transactions_file = './data/Funds.csv'
@@ -79,7 +79,7 @@ print("---Categorization begin---")
 # Example usage
 mappings_df = read_mappings(categorizer_csv)
 
-categorizator_i = 55
+categorizator_i = 54
 print(df.iloc[categorizator_i])
 
 category, subcategory, note = categorize_ith_expense(df, categorizator_i, mappings_df, categories_csv, categorizer_csv)
