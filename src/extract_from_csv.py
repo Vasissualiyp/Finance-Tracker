@@ -252,17 +252,24 @@ def sort_ith_expense(df, i): #{{{
     df (DataFrame): The DataFrame for which to assign the Income/Expense values.
     i (int): The index of the row for which to assign the Income/Expense values.
     """
-    money_difference = df.at[i, "CAD"]
+    money_difference = df.at[i, "CAD$"]
     account_name = df.at[i, "Account Number"]
+    
+    # Convert to numeric type if not already
+    money_difference = pd.to_numeric(money_difference, errors='coerce')
+    
+    # Check if the value is NaN after conversion (indicating a conversion error)
+    if pd.isna(money_difference):
+        print(f"Conversion error for value {df.at[i, 'CAD']} at index {i}")
+        #continue  # Skip this row or handle the error as needed
+    
+    # Reverse sign for credit card accounts if needed
+    if 'RBC Credit' in account_name or 'Other Credit Condition' in account_name:
+        money_difference = -money_difference
+    
+    # Determine if it's income or expense
+    income_expense = "Income" if money_difference > 0 else "Expense"
 
-    # Income/Expense are reversed for credit cards
-    if 'RBC Credit' in account_name:
-        money_difference = money_difference * (-1)
-
-    if money_difference > 0:
-        income_expense = "Income"
-    else:
-        income_expense = "Expense"
     return income_expense
 #}}}
 
