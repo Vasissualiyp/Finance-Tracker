@@ -125,6 +125,9 @@ def convert_rbc_df_to_MMxlsx(df, mappings_df, categories_csv, categorizer_csv): 
         category, subcategory, note = categorize_ith_expense(df, i, mappings_df, categories_csv, categorizer_csv)
         print(f"Categorized {i} transactions out of {len_df}")
         write_to_df_row(df, i, category, subcategory, note)
+    
+    df = identify_transferout_transactions(df)
+
     df = convert_df_to_MMxl_format_preCategory(df)
     print()
 
@@ -264,8 +267,8 @@ def sort_ith_expense(df, i): #{{{
         #continue  # Skip this row or handle the error as needed
     
     # Reverse sign for credit card accounts if needed
-    if 'RBC Credit' in account_name or 'Other Credit Condition' in account_name:
-        money_difference = -money_difference
+    #if 'RBC Credit' in account_name or 'Other Credit Condition' in account_name:
+    #    money_difference = -money_difference
     
     # Determine if it's income or expense
     income_expense = "Income" if money_difference > 0 else "Expense"
@@ -294,6 +297,59 @@ def write_to_df_row(df, i, category, subcategory, note): #{{{
     df.loc[i, "CAD"] = abs(df.loc[i, "CAD"])
     df.loc[i, "Amount"] = df.loc[i, "CAD"]
     df.loc[i, "Currency"] = "CAD"
+#}}}
+
+def identify_transferout_transactions(df): #{{{
+    """
+    Process transactions in the DataFrame to handle special case of matching income and expense transactions.
+
+    Args:
+    df (pd.DataFrame): DataFrame containing transaction data with columns 'Date', 'CAD$', 'Income/Expense', 'Account Number', 'Subcategory', 'Note'
+
+    Returns:
+    pd.DataFrame: Updated DataFrame after processing.
+    """
+    # Group the DataFrame by date
+    grouped = df.groupby('Date')
+
+    # Find indices of rows to be removed and rows to be updated
+    rows_to_remove = []
+    rows_to_update = []
+
+    for _, group in grouped:
+        # Iterate over each combination of transactions within the group
+        for i in group.index:
+            for j in group.index:
+                if i != j and i not in rows_to_remove and j not in rows_to_remove:
+                    #print(f"Checking date {group['Date']},")
+                    #print(f"i={i}, j={j}...")
+                    # Check if they are a matching pair
+                    compare = abs( (group.at[i, 'CAD'] - group.at[j, 'CAD']) / group.at[j, 'CAD'] )
+                    if (compare < 0.1 and
+                        group.at[i, 'Income/Expense'] != group.at[j, 'Income/Expense']):
+                        print("Success!")
+                        print(f"Date: {group['Date']}")
+                        
+                        # Identify income and expense rows
+                        income_row = i if group.at[i, 'Income/Expense'] == 'Income' else j
+                        expense_row = j if income_row == i else i
+
+                        # Record rows for removal and update
+                        rows_to_remove.append(income_row)
+                        rows_to_update.append(expense_row)
+
+    # Process updates and removals
+    for row in rows_to_update:
+        account_number = df.at[rows_to_remove[rows_to_update.index(row)], 'Account Number']
+        df.at[row, 'Category'] = account_number
+        df.at[row, 'Subcategory'] = ''
+        df.at[row, 'Note'] = ''
+        df.at[row, 'Income/Expense'] = 'Transfer-Out'
+
+    df = df.drop(rows_to_remove)
+    df = df.reset_index(drop=True)
+
+    return df
 #}}}
 
 def remove_duplicate_transactions(df): #{{{

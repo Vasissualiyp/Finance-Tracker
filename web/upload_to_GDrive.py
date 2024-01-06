@@ -24,14 +24,34 @@ def authenticate_google(): #{{{
 #}}}
 
 def upload_file(service, file_path, mime_type, folder_id): #{{{
-    """Upload a file to a specific folder on Google Drive."""
-    file_metadata = {
-        'name': os.path.basename(file_path),
-        'parents': [folder_id]  # Specify the folder ID here
-    }
+    """
+    Upload a file to a specific folder on Google Drive, replacing it if it already exists.
+
+    Args:
+    service: Authorized Google Drive service instance.
+    file_path (str): Path of the file to upload.
+    mime_type (str): MIME type of the file.
+    folder_id (str): ID of the folder where the file will be uploaded.
+    """
+    file_name = os.path.basename(file_path)
+    query = f"name = '{file_name}' and '{folder_id}' in parents and trashed = false"
+
+    # Search for the file in the specified folder
+    response = service.files().list(q=query, spaces='drive', fields='files(id, name)').execute()
+    files = response.get('files', [])
+
+    # File update (if exists) or upload (if not exists)
     media = MediaFileUpload(file_path, mimetype=mime_type)
-    file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-    print(f"File ID: {file.get('id')}")
+    if files:
+        # If the file exists, update it
+        file_id = files[0].get('id')
+        updated_file = service.files().update(fileId=file_id, media_body=media).execute()
+        print(f"Updated File ID: {updated_file.get('id')}")
+    else:
+        # If the file does not exist, upload it
+        file_metadata = {'name': file_name, 'parents': [folder_id]}
+        file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+        print(f"Uploaded File ID: {file.get('id')}")
 #}}}
 
 # Authenticate with Google Drive
