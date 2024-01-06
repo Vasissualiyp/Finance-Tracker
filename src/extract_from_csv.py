@@ -11,6 +11,8 @@ categorizer_csv = './config/descriptions_categorization.csv'  # Path to conversi
 categories_csv = './config/categories.csv' # Path to the list of categories
 total_xlsx = './data/Money Manager - Excel 2023-01-01 ~ 2023-12-31.xlsx' # Path to excel file with all previous transaction data (MM format)
 
+drop_date='2023-08-01' # A point in time before which the transactions should be dropped (needed to avoid duplicate transactions)
+
 file_locations = (transactions_file, account_translations_file, categorizer_csv, categories_csv, total_xlsx) 
 
 #-------------------------SOURCE CODE---------------------------------- {{{
@@ -167,7 +169,122 @@ def rename_last_column(df, new_name): #{{{
 #}}}
 #}}}
 
+# Dataframe cleanup {{{
+def identify_transferout_transactions(df): #{{{
+    """
+    Process transactions in the DataFrame to handle special case of matching income and expense transactions.
+
+    Args:
+    df (pd.DataFrame): DataFrame containing transaction data with columns 'Date', 'CAD$', 'Income/Expense', 'Account Number', 'Subcategory', 'Note'
+
+    Returns:
+    pd.DataFrame: Updated DataFrame after processing.
+    """
+    # Group the DataFrame by date
+    grouped = df.groupby('Date')
+
+    # Find indices of rows to be removed and rows to be updated
+    rows_to_remove = []
+    rows_to_update = []
+
+    for _, group in grouped:
+        # Iterate over each combination of transactions within the group
+        for i in group.index:
+            for j in group.index:
+                if i != j and i not in rows_to_remove and j not in rows_to_remove:
+                    #print(f"Checking date {group['Date']},")
+                    #print(f"i={i}, j={j}...")
+                    # Check if they are a matching pair
+                    compare = abs( (group.at[i, 'CAD'] - group.at[j, 'CAD']) / group.at[j, 'CAD'] )
+                    if (compare < 0.05 and
+                        group.at[i, 'Income/Expense'] != group.at[j, 'Income/Expense']):
+                        #print("Success!")
+                        #print(f"Date: {group['Date']}")
+                        
+                        # Identify income and expense rows
+                        income_row = i if group.at[i, 'Income/Expense'] == 'Income' else j
+                        expense_row = j if income_row == i else i
+
+                        # Record rows for removal and update
+                        rows_to_remove.append(income_row)
+                        rows_to_update.append(expense_row)
+
+    # Process updates and removals
+    for row in rows_to_update:
+        account_number = df.at[rows_to_remove[rows_to_update.index(row)], 'Account Number']
+
+        # In case the transfer-out to the same account, drop this transaction so that it doesn't clutter anything
+        if account_number == df.at[row, 'Account Number']:
+            rows_to_remove.append(row)
+        else:
+            df.at[row, 'Category'] = account_number
+            df.at[row, 'Subcategory'] = ''
+            df.at[row, 'Note'] = ''
+            df.at[row, 'Income/Expense'] = 'Transfer-Out'
+
+    df = df.drop(rows_to_remove)
+    df = df.reset_index(drop=True)
+
+    return df
+#}}}
+
+def remove_duplicate_transactions(df): #{{{
+    """
+    Removes duplicate transactions from a DataFrame based on specific columns.
+
+    Args:
+    df (pd.DataFrame): The DataFrame from which to remove duplicate transactions.
+
+    Returns:
+    pd.DataFrame: A new DataFrame with duplicate transactions removed.
+    """
+    # Columns to consider for identifying duplicates
+    columns_to_check = ['Date', 'Account', 'CAD', 'Income/Expense', 'Currency', 'Amount']
+
+    # Remove duplicates
+    df_without_duplicates = df.drop_duplicates(subset=columns_to_check, keep='first')
+
+    return df_without_duplicates
+#}}}
+
+def drop_entries_before_date(df, date_str): #{{{
+    """
+    Drop all entries in the DataFrame that happened before the given date.
+
+    Args:
+    df (pd.DataFrame): DataFrame containing a date column with mixed date formats.
+    date_str (str): The cutoff date in 'YYYY-MM-DD' format.
+
+    Returns:
+    pd.DataFrame: A DataFrame with entries on or after the given date.
+    """
+    # Convert date_str to a datetime object
+    cutoff_date = datetime.strptime(date_str, '%Y-%m-%d')
+
+    # Standardize the date format in the DataFrame
+    def standardize_date(date_str):
+        try:
+            # Try parsing the full datetime format first
+            return datetime.strptime(date_str, '%Y/%m/%d %H:%M:%S')
+        except ValueError:
+            # If it fails, it's likely in the shorter date format
+            # Set the time to 12:00:00
+            return datetime.strptime(date_str + ' 12:00:00', '%Y/%m/%d %H:%M:%S')
+
+
+    df['Date'] = df['Date'].apply(standardize_date)
+
+    # Filter the DataFrame
+    filtered_df = df[df['Date'] >= cutoff_date]
+
+    return filtered_df
+#}}}
+#}}}
+
 def df_to_csv_main(transactions_data_file, account_translations_file): #{{{
+    """
+    This function is extracting the csv file to the dataframe and converts it to the format, usable by the code
+    """
     df= extract_csv_to_df(transactions_data_file)
     df = alter_transactions_df(account_translations_file, df)
     account_numbers, account_types = extract_account_numbers_and_types(df)
@@ -210,6 +327,9 @@ def extract_account_numbers_and_types(df): #{{{
 #}}}
 
 def add_categorization_columns(df): # {{{
+    """
+    This funciton adds columns, needed for categorization of the dataframe
+    """
     df["CAD"] = abs(df["CAD$"])
     df["Income/Expense"] = None
     df["Description"] = ''
@@ -278,6 +398,19 @@ def sort_ith_expense(df, i): #{{{
     return income_expense
 #}}}
 
+def join_dfs(df1, df2): #{{{
+    df1 = df1.reset_index(drop=True)
+    df2 = df2.reset_index(drop=True)
+    df_joined = pd.concat([df1, df2], ignore_index=True)
+    return df_joined
+#}}}
+
+def cleanup_df(df): #{{{
+    df = df.sort_values(by='Date')
+    df = remove_duplicate_transactions(df)
+    return df
+#}}}
+
 def write_to_df_row(df, i, category, subcategory, note): #{{{
     """
     Updates the DataFrame with new expense information for the specified row index.
@@ -301,116 +434,8 @@ def write_to_df_row(df, i, category, subcategory, note): #{{{
     df.loc[i, "Currency"] = "CAD"
 #}}}
 
-def identify_transferout_transactions(df): #{{{
-    """
-    Process transactions in the DataFrame to handle special case of matching income and expense transactions.
 
-    Args:
-    df (pd.DataFrame): DataFrame containing transaction data with columns 'Date', 'CAD$', 'Income/Expense', 'Account Number', 'Subcategory', 'Note'
-
-    Returns:
-    pd.DataFrame: Updated DataFrame after processing.
-    """
-    # Group the DataFrame by date
-    grouped = df.groupby('Date')
-
-    # Find indices of rows to be removed and rows to be updated
-    rows_to_remove = []
-    rows_to_update = []
-
-    for _, group in grouped:
-        # Iterate over each combination of transactions within the group
-        for i in group.index:
-            for j in group.index:
-                if i != j and i not in rows_to_remove and j not in rows_to_remove:
-                    #print(f"Checking date {group['Date']},")
-                    #print(f"i={i}, j={j}...")
-                    # Check if they are a matching pair
-                    compare = abs( (group.at[i, 'CAD'] - group.at[j, 'CAD']) / group.at[j, 'CAD'] )
-                    if (compare < 0.05 and
-                        group.at[i, 'Income/Expense'] != group.at[j, 'Income/Expense']):
-                        #print("Success!")
-                        #print(f"Date: {group['Date']}")
-                        
-                        # Identify income and expense rows
-                        income_row = i if group.at[i, 'Income/Expense'] == 'Income' else j
-                        expense_row = j if income_row == i else i
-
-                        # Record rows for removal and update
-                        rows_to_remove.append(income_row)
-                        rows_to_update.append(expense_row)
-
-    # Process updates and removals
-    for row in rows_to_update:
-        account_number = df.at[rows_to_remove[rows_to_update.index(row)], 'Account Number']
-
-        if account_number == df.at[row, 'Account Number']:
-            rows_to_remove.append(row)
-        else:
-            df.at[row, 'Category'] = account_number
-            df.at[row, 'Subcategory'] = ''
-            df.at[row, 'Note'] = ''
-            df.at[row, 'Income/Expense'] = 'Transfer-Out'
-
-    df = df.drop(rows_to_remove)
-    df = df.reset_index(drop=True)
-
-    return df
-#}}}
-
-def remove_duplicate_transactions(df): #{{{
-    """
-    Removes duplicate transactions from a DataFrame based on specific columns.
-
-    Args:
-    df (pd.DataFrame): The DataFrame from which to remove duplicate transactions.
-
-    Returns:
-    pd.DataFrame: A new DataFrame with duplicate transactions removed.
-    """
-    # Columns to consider for identifying duplicates
-    columns_to_check = ['Date', 'Account', 'CAD', 'Income/Expense', 'Currency', 'Amount']
-
-    # Remove duplicates
-    df_without_duplicates = df.drop_duplicates(subset=columns_to_check, keep='first')
-
-    return df_without_duplicates
-#}}}
-
-def drop_entries_before_date(df, date_str): #{{{
-    """
-    Drop all entries in the DataFrame that happened before the given date.
-
-    Args:
-    df (pd.DataFrame): DataFrame containing a date column with mixed date formats.
-    date_str (str): The cutoff date in 'YYYY-MM-DD' format.
-
-    Returns:
-    pd.DataFrame: A DataFrame with entries on or after the given date.
-    """
-    # Convert date_str to a datetime object
-    cutoff_date = datetime.strptime(date_str, '%Y-%m-%d')
-
-    # Standardize the date format in the DataFrame
-    def standardize_date(date_str):
-        try:
-            # Try parsing the full datetime format first
-            return datetime.strptime(date_str, '%Y/%m/%d %H:%M:%S')
-        except ValueError:
-            # If it fails, it's likely in the shorter date format
-            # Set the time to 12:00:00
-            return datetime.strptime(date_str + ' 12:00:00', '%Y/%m/%d %H:%M:%S')
-
-
-    df['Date'] = df['Date'].apply(standardize_date)
-
-    # Filter the DataFrame
-    filtered_df = df[df['Date'] >= cutoff_date]
-
-    return filtered_df
-#}}}
-
-def main(file_locations): #{{{
+def main(file_locations, drop_date, drop_date_flag=False): #{{{
     """
     Main function to process transaction files and convert them into the
     format required by MoneyManager Excel file.
@@ -422,6 +447,8 @@ def main(file_locations): #{{{
                             - Path to the CSV file containing categorizer data.
                             - Path to the CSV file containing categories.
                             - Path to the xlsx file containing all previous transactions.
+    drop_date: A date before which all transactions should be dropped.
+    drop_date_flag: A flag that determines if the transactions will be dropped before a drop_date date. By default, no drop occurs.
     """
     transactions_file, account_translations_file, categorizer_csv, categories_csv, total_xlsx = file_locations
     output_tsv_path = './data/Funds2.tsv'
@@ -437,16 +464,21 @@ def main(file_locations): #{{{
     df_total = rename_last_column(df_total, 'Account.1')
 
     # Join the new and old transactions dataframes
-    df = df.reset_index(drop=True)
-    df_total = df_total.reset_index(drop=True)
-    df_joined = pd.concat([df, df_total], ignore_index=True)
-    df_joined = df_joined.sort_values(by='Date')
-    df_joined = drop_entries_before_date(df_joined, drop_date)
-    df_joined = remove_duplicate_transactions(df_joined)
+    df_joined = join_dfs(df, df_total)
 
-    df_joined = rename_last_column(df_joined, 'Account')
-    #write_df_to_excel(df_joined, output_tsv_path, sheet_name='Money Manager')
-    write_df_to_tsv(df_joined, output_tsv_path)
+    # Clean up of the combined dataframe
+    df_joined = cleanup_df(df_joined)
+
+    # Drop the transactions before a certain point in time
+    if drop_date_flag:
+        df = drop_entries_before_date(df, drop_date)
+
+    # Last step before writing the file - without this MM would not be able to read the tsv file
+    df_joined = rename_last_column(df_joined, 'Account') 
+
+    #write_df_to_excel(df_joined, output_tsv_path, sheet_name='Money Manager') # Write as xlsx
+    write_df_to_tsv(df_joined, output_tsv_path) # Write as tsv
+
     print("Export to tsv is complete!")
  
     #print(df_joined.iloc[0])
@@ -460,4 +492,4 @@ def main(file_locations): #{{{
 #}}}
 #-------------------------SOURCE CODE END------------------------------ }}}
 
-main(file_locations)
+main(file_locations,drop_date, drop_date_flag=True)
