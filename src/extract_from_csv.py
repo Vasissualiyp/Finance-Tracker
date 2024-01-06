@@ -74,15 +74,8 @@ def alter_transactions_df(account_translations_file, df): #{{{
     return df
 #}}}
 
-def convert_df_to_MMxl_format_preCategory(df): # {{{
-    """
-    This function converts the dataframe to the xlsx format, used in MoneyManager.
-    The dataframe is not fully ready to be used in the MoneyManager yet - categorization needs to be performed first
-    Also, the order is not the same yet.
-    """
-    df = df.rename(columns={'Account Number': 'Account'}) 
-    # Add extra columns
-    df["CAD"] = df["CAD$"] 
+def add_categorization_columns(df): # {{{
+    df["CAD"] = abs(df["CAD$"])
     df["Income/Expense"] = None
     df["Description"] = ''
     df["Amount"] = None
@@ -90,7 +83,16 @@ def convert_df_to_MMxl_format_preCategory(df): # {{{
     df["Category"] = None
     df["Subcategory"] = None
     df["Note"] = None
+    return df
+#}}}
 
+def convert_df_to_MMxl_format_preCategory(df): # {{{
+    """
+    This function converts the dataframe to the xlsx format, used in MoneyManager.
+    The dataframe is not fully ready to be used in the MoneyManager yet - categorization needs to be performed first
+    Also, the order is not the same yet.
+    """
+    df = df.rename(columns={'Account Number': 'Account'}) 
     # Remove not needed columns
     df = df.drop("Account Type", axis=1)
     df = df.drop("Description 1", axis=1)
@@ -209,6 +211,19 @@ def write_df_to_excel(df, file_path, sheet_name='Sheet1'): #{{{
         df.to_excel(writer, sheet_name=sheet_name, index=False)
 #}}}
 
+def write_df_to_tsv(df, file_path, sep='\t'): #{{{
+    """
+    Writes a DataFrame to a TSV file.
+
+    Args:
+    df (pd.DataFrame): The DataFrame to be written to the TSV file.
+    file_path (str): The path where the TSV file will be saved.
+    sep (str): The separator to use in the file. Default is tab character.
+    """
+    # Write the DataFrame to a TSV file
+    df.to_csv(file_path, sep=sep, index=False)
+#}}}
+
 def create_extra_column(df): #{{{
     """ 
     We need to create an extra copy of the 'Amount' column in order to make the xlsx readable by MoneyManager
@@ -268,18 +283,13 @@ def convert_rbc_df_to_MMxlsx(df, mappings_df, categories_csv, categorizer_csv): 
     #len_df = 1
     len_df = len(df)
 
+    df = add_categorization_columns(df)
     # Categorize every transaction (row) in the array
     for i in range(len_df):
         category, subcategory, note = categorize_ith_expense(df, i, mappings_df, categories_csv, categorizer_csv)
         print(f"Categorized {i} transactions out of {len_df}")
-    print()
-
-    df = convert_df_to_MMxl_format_preCategory(df)
-
-    # Fill in entries in the dataframe according to the format of MoneyManager xlsx file
-    for i in range(len_df):
         write_to_df_row(df, i, category, subcategory, note)
-        print(f"Wrote {i} transactions out of {len_df}")
+    df = convert_df_to_MMxl_format_preCategory(df)
     print()
 
     # Last edit to align with the MoneyManager formatting
@@ -302,7 +312,7 @@ def main(file_locations): #{{{
                             - Path to the xlsx file containing all previous transactions.
     """
     transactions_file, account_translations_file, categorizer_csv, categories_csv, total_xlsx = file_locations
-    output_xlsx_path = './data/Funds2.xlsx'
+    output_tsv_path = './data/Funds2.tsv'
 
     df, account_numbers, account_types = df_to_csv_main(transactions_file, account_translations_file)
     mappings_df = read_mappings(categorizer_csv)
@@ -320,7 +330,8 @@ def main(file_locations): #{{{
     df_joined = df_joined.sort_values(by='Date')
 
     df_joined = rename_last_column(df_joined, 'Account')
-    write_df_to_excel(df_joined, output_xlsx_path, sheet_name='Money Manager')
+    #write_df_to_excel(df_joined, output_tsv_path, sheet_name='Money Manager')
+    write_df_to_tsv(df_joined, output_tsv_path)
     print("Export to xlsx is complete!")
  
     print(df_joined.iloc[0])
