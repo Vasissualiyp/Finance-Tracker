@@ -37,8 +37,10 @@ def upload_file(service, file_path, mime_type, folder_id): #{{{
 # Authenticate with Google Drive
 service = authenticate_google()
 
-# Example usage: replace '/path/to/your/file.xlsx', 'your-folder-id' with your file path and folder ID
-xlsx_file = '../data/Funds2.xlsx'
+# Example usage: replace '/path/to/your/file.tsv', 'your-folder-id' with your file path and folder ID
+tsv_file = '../data/Funds2.tsv'
 folder_id = '16MN1Dk06bZp42rsVDjtjr77ZX2cZu7uu'
-upload_file(service,xlsx_file, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', folder_id)
+#mime_type =  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' # xlsx mime
+mime_type = 'text/tab-separated-values' # tsv mime
+upload_file(service,tsv_file, mime_type, folder_id)
 

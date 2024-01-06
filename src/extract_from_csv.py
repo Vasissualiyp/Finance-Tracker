@@ -12,8 +12,158 @@ total_xlsx = './data/Money Manager - Excel 2023-01-01 ~ 2023-12-31.xlsx' # Path 
 file_locations = (transactions_file, account_translations_file, categorizer_csv, categories_csv, total_xlsx) 
 
 #-------------------------SOURCE CODE---------------------------------- {{{
+# Loading/saving files {{{
+def read_excel_to_df(file_path, sheet_name=0): #{{{
+    """
+    Reads an Excel file into a pandas DataFrame.
+
+    Args:
+    file_path (str): The path to the Excel file.
+    sheet_name (str or int, optional): The name or index of the sheet to read.
+                                       Default is 0, which reads the first sheet.
+
+    Returns:
+    pd.DataFrame: DataFrame containing the contents of the specified Excel sheet.
+
+    Raises:
+    FileNotFoundError: If the file at the specified path does not exist.
+    ValueError: If the specified sheet_name is not found in the Excel file.
+    """
+    try:
+        # Read the Excel file
+        return pd.read_excel(file_path, sheet_name=sheet_name)
+    except FileNotFoundError:
+        raise FileNotFoundError(f"No file found at specified path: {file_path}")
+    except ValueError:
+        raise ValueError(f"Sheet '{sheet_name}' not found in the Excel file.")
+#}}}
+
+def extract_csv_to_df(file_path): #{{{
+    # Define the column names
+    columns = ["Account Type", "Account Number", "Transaction Date", "Cheque Number", "Description 1", "Description 2", "CAD$", "USD$"]
+    
+    # Read the CSV file into a Pandas DataFrame
+    df = pd.read_csv(file_path, usecols=columns)
+    return df
+#}}}
+
+def write_df_to_excel(df, file_path, sheet_name='Sheet1'): #{{{
+    """
+    Writes a DataFrame to an Excel file with a custom sheet name.
+
+    Args:
+    df (pd.DataFrame): The DataFrame to be written to the Excel file.
+    file_path (str): The path where the Excel file will be saved.
+    sheet_name (str): The name of the sheet in the Excel file. Default is 'Sheet1'.
+    """
+    # Write the DataFrame to an Excel file
+    with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
+        df.to_excel(writer, sheet_name=sheet_name, index=False)
+#}}}
+
+def write_df_to_tsv(df, file_path, sep='\t'): #{{{
+    """
+    Writes a DataFrame to a TSV file.
+
+    Args:
+    df (pd.DataFrame): The DataFrame to be written to the TSV file.
+    file_path (str): The path where the TSV file will be saved.
+    sep (str): The separator to use in the file. Default is tab character.
+    """
+    # Write the DataFrame to a TSV file
+    df.to_csv(file_path, sep=sep, index=False)
+#}}}
+#}}}
+
+# DataFrame Manipulation: RBC -> MM Conversion {{{
+def alter_transactions_df(account_translations_file, df): #{{{
+    """
+    This is first alteration of transactions dataframe.
+    Needed for converting the dataframe to the format, which the code can work with. 
+    """
+    df = df.rename(columns={'Transaction Date': 'Date'})
+    df = df.drop("Cheque Number", axis=1)
+    df = replace_account_numbers(account_translations_file, df)
+    return df
+#}}}
+
+def create_extra_column(df): #{{{
+    """ 
+    We need to create an extra copy of the 'Amount' column in order to make the xlsx readable by MoneyManager
+    """
+    # Create a new column 'Account' (duplicate) with values from 'Amount'
+    df['Account.1'] = df['Amount']
+    
+    # If you want to place this new column at the end, you can reorder the DataFrame
+    columns = df.columns.tolist()
+    columns.append(columns.pop(columns.index('Account.1')))
+    df = df[columns]
+    
+    return df
+#}}}
+
+def convert_rbc_df_to_MMxlsx(df, mappings_df, categories_csv, categorizer_csv): #{{{
+    """
+    Converts a DataFrame into the format required by MoneyManager Excel file,
+    categorizing each transaction and formatting the DataFrame accordingly.
+
+    Args:
+    df (pd.DataFrame): DataFrame containing transaction data.
+    mappings_df (pd.DataFrame): DataFrame containing mappings for categorization.
+    categories_csv (str): Path to the CSV file containing categories.
+    categorizer_csv (str): Path to the CSV file containing categorizer data.
+
+    Returns:
+    pd.DataFrame: DataFrame formatted for MoneyManager Excel file.
+    """
+    #len_df = 1
+    len_df = len(df)
+
+    df = add_categorization_columns(df)
+    # Categorize every transaction (row) in the array
+    for i in range(len_df):
+        category, subcategory, note = categorize_ith_expense(df, i, mappings_df, categories_csv, categorizer_csv)
+        print(f"Categorized {i} transactions out of {len_df}")
+        write_to_df_row(df, i, category, subcategory, note)
+    df = convert_df_to_MMxl_format_preCategory(df)
+    print()
+
+    # Last edit to align with the MoneyManager formatting
+    df = create_extra_column(df)
+
+    return df
+#}}}
+
+def rename_last_column(df, new_name): #{{{
+    """
+    Renames the last column of a pandas DataFrame.
+
+    Args:
+    df (pd.DataFrame): The DataFrame whose last column needs to be renamed.
+    new_name (str): The new name for the last column.
+
+    Returns:
+    pd.DataFrame: The DataFrame with the last column renamed.
+    """
+    # Ensure the DataFrame has at least one column
+    if len(df.columns) == 0:
+        raise ValueError("DataFrame has no columns to rename.")
+
+    # Get a list of the current column names
+    column_names = df.columns.tolist()
+
+    # Change the name of the last column
+    column_names[-1] = new_name
+
+    # Assign the new list of column names to the DataFrame
+    df.columns = column_names
+
+    return df
+#}}}
+#}}}
+
 def df_to_csv_main(transactions_data_file, account_translations_file): #{{{
-    df= extract_to_df(transactions_data_file)
+    df= extract_csv_to_df(transactions_data_file)
     df = alter_transactions_df(account_translations_file, df)
     account_numbers, account_types = extract_account_numbers_and_types(df)
     return df, account_numbers, account_types
@@ -52,26 +202,6 @@ def extract_account_numbers_and_types(df): #{{{
         account_type = df[df['Account Number'] == account_number]['Account Type'].iloc[0]
         account_types.append(account_type)
     return account_numbers, account_types
-#}}}
-
-def extract_to_df(file_path): #{{{
-    # Define the column names
-    columns = ["Account Type", "Account Number", "Transaction Date", "Cheque Number", "Description 1", "Description 2", "CAD$", "USD$"]
-    
-    # Read the CSV file into a Pandas DataFrame
-    df = pd.read_csv(file_path, usecols=columns)
-    return df
-#}}}
-
-def alter_transactions_df(account_translations_file, df): #{{{
-    """
-    This is first alteration of transactions dataframe.
-    Needed for converting the dataframe to the format, which the code can work with. 
-    """
-    df = df.rename(columns={'Transaction Date': 'Date'})
-    df = df.drop("Cheque Number", axis=1)
-    df = replace_account_numbers(account_translations_file, df)
-    return df
 #}}}
 
 def add_categorization_columns(df): # {{{
@@ -123,6 +253,12 @@ def sort_ith_expense(df, i): #{{{
     i (int): The index of the row for which to assign the Income/Expense values.
     """
     money_difference = df.at[i, "CAD"]
+    account_name = df.at[i, "Account Number"]
+
+    # Income/Expense are reversed for credit cards
+    if 'RBC Credit' in account_name:
+        money_difference = money_difference * (-1)
+
     if money_difference > 0:
         income_expense = "Income"
     else:
@@ -153,31 +289,6 @@ def write_to_df_row(df, i, category, subcategory, note): #{{{
     df.loc[i, "Currency"] = "CAD"
 #}}}
 
-def read_excel_to_df(file_path, sheet_name=0): #{{{
-    """
-    Reads an Excel file into a pandas DataFrame.
-
-    Args:
-    file_path (str): The path to the Excel file.
-    sheet_name (str or int, optional): The name or index of the sheet to read.
-                                       Default is 0, which reads the first sheet.
-
-    Returns:
-    pd.DataFrame: DataFrame containing the contents of the specified Excel sheet.
-
-    Raises:
-    FileNotFoundError: If the file at the specified path does not exist.
-    ValueError: If the specified sheet_name is not found in the Excel file.
-    """
-    try:
-        # Read the Excel file
-        return pd.read_excel(file_path, sheet_name=sheet_name)
-    except FileNotFoundError:
-        raise FileNotFoundError(f"No file found at specified path: {file_path}")
-    except ValueError:
-        raise ValueError(f"Sheet '{sheet_name}' not found in the Excel file.")
-#}}}
-
 def remove_duplicate_transactions(df): #{{{
     """
     Removes duplicate transactions from a DataFrame based on specific columns.
@@ -197,106 +308,6 @@ def remove_duplicate_transactions(df): #{{{
     return df_without_duplicates
 #}}}
 
-def write_df_to_excel(df, file_path, sheet_name='Sheet1'): #{{{
-    """
-    Writes a DataFrame to an Excel file with a custom sheet name.
-
-    Args:
-    df (pd.DataFrame): The DataFrame to be written to the Excel file.
-    file_path (str): The path where the Excel file will be saved.
-    sheet_name (str): The name of the sheet in the Excel file. Default is 'Sheet1'.
-    """
-    # Write the DataFrame to an Excel file
-    with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
-        df.to_excel(writer, sheet_name=sheet_name, index=False)
-#}}}
-
-def write_df_to_tsv(df, file_path, sep='\t'): #{{{
-    """
-    Writes a DataFrame to a TSV file.
-
-    Args:
-    df (pd.DataFrame): The DataFrame to be written to the TSV file.
-    file_path (str): The path where the TSV file will be saved.
-    sep (str): The separator to use in the file. Default is tab character.
-    """
-    # Write the DataFrame to a TSV file
-    df.to_csv(file_path, sep=sep, index=False)
-#}}}
-
-def create_extra_column(df): #{{{
-    """ 
-    We need to create an extra copy of the 'Amount' column in order to make the xlsx readable by MoneyManager
-    """
-    # Create a new column 'Account' (duplicate) with values from 'Amount'
-    df['Account.1'] = df['Amount']
-    
-    # If you want to place this new column at the end, you can reorder the DataFrame
-    columns = df.columns.tolist()
-    columns.append(columns.pop(columns.index('Account.1')))
-    df = df[columns]
-    
-    return df
-#}}}
-
-def rename_last_column(df, new_name): #{{{
-    """
-    Renames the last column of a pandas DataFrame.
-
-    Args:
-    df (pd.DataFrame): The DataFrame whose last column needs to be renamed.
-    new_name (str): The new name for the last column.
-
-    Returns:
-    pd.DataFrame: The DataFrame with the last column renamed.
-    """
-    # Ensure the DataFrame has at least one column
-    if len(df.columns) == 0:
-        raise ValueError("DataFrame has no columns to rename.")
-
-    # Get a list of the current column names
-    column_names = df.columns.tolist()
-
-    # Change the name of the last column
-    column_names[-1] = new_name
-
-    # Assign the new list of column names to the DataFrame
-    df.columns = column_names
-
-    return df
-#}}}
-
-def convert_rbc_df_to_MMxlsx(df, mappings_df, categories_csv, categorizer_csv): #{{{
-    """
-    Converts a DataFrame into the format required by MoneyManager Excel file,
-    categorizing each transaction and formatting the DataFrame accordingly.
-
-    Args:
-    df (pd.DataFrame): DataFrame containing transaction data.
-    mappings_df (pd.DataFrame): DataFrame containing mappings for categorization.
-    categories_csv (str): Path to the CSV file containing categories.
-    categorizer_csv (str): Path to the CSV file containing categorizer data.
-
-    Returns:
-    pd.DataFrame: DataFrame formatted for MoneyManager Excel file.
-    """
-    #len_df = 1
-    len_df = len(df)
-
-    df = add_categorization_columns(df)
-    # Categorize every transaction (row) in the array
-    for i in range(len_df):
-        category, subcategory, note = categorize_ith_expense(df, i, mappings_df, categories_csv, categorizer_csv)
-        print(f"Categorized {i} transactions out of {len_df}")
-        write_to_df_row(df, i, category, subcategory, note)
-    df = convert_df_to_MMxl_format_preCategory(df)
-    print()
-
-    # Last edit to align with the MoneyManager formatting
-    df = create_extra_column(df)
-
-    return df
-#}}}
 
 def main(file_locations): #{{{
     """
