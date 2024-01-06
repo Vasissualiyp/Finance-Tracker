@@ -2,6 +2,7 @@
 import re
 import pandas as pd
 from categorization import convert_ai_tuple, categorize_ith_expense, extract_descriptions, read_mappings, user_edit_categorization, categorize_expense_from_descriptions, write_new_category
+from datetime import datetime
 
 # Specify the path to your CSV files
 transactions_file = './data/Funds.csv' # Path for RBC transactions file
@@ -9,6 +10,7 @@ account_translations_file = './config/accounts.csv' # Path for the file to conve
 categorizer_csv = './config/descriptions_categorization.csv'  # Path to conversion of descriptions to categories
 categories_csv = './config/categories.csv' # Path to the list of categories
 total_xlsx = './data/Money Manager - Excel 2023-01-01 ~ 2023-12-31.xlsx' # Path to excel file with all previous transaction data (MM format)
+
 file_locations = (transactions_file, account_translations_file, categorizer_csv, categories_csv, total_xlsx) 
 
 #-------------------------SOURCE CODE---------------------------------- {{{
@@ -371,6 +373,38 @@ def remove_duplicate_transactions(df): #{{{
     return df_without_duplicates
 #}}}
 
+def drop_entries_before_date(df, date_str): #{{{
+    """
+    Drop all entries in the DataFrame that happened before the given date.
+
+    Args:
+    df (pd.DataFrame): DataFrame containing a date column with mixed date formats.
+    date_str (str): The cutoff date in 'YYYY-MM-DD' format.
+
+    Returns:
+    pd.DataFrame: A DataFrame with entries on or after the given date.
+    """
+    # Convert date_str to a datetime object
+    cutoff_date = datetime.strptime(date_str, '%Y-%m-%d')
+
+    # Standardize the date format in the DataFrame
+    def standardize_date(date_str):
+        try:
+            # Try parsing the full datetime format first
+            return datetime.strptime(date_str, '%Y/%m/%d %H:%M:%S')
+        except ValueError:
+            # If it fails, it's likely in the shorter date format
+            # Set the time to 12:00:00
+            return datetime.strptime(date_str + ' 12:00:00', '%Y/%m/%d %H:%M:%S')
+
+
+    df['Date'] = df['Date'].apply(standardize_date)
+
+    # Filter the DataFrame
+    filtered_df = df[df['Date'] >= cutoff_date]
+
+    return filtered_df
+#}}}
 
 def main(file_locations): #{{{
     """
@@ -387,6 +421,7 @@ def main(file_locations): #{{{
     """
     transactions_file, account_translations_file, categorizer_csv, categories_csv, total_xlsx = file_locations
     output_tsv_path = './data/Funds2.tsv'
+    drop_date = '2023-07-01' # A date before all transactions are dropped from the file
 
     df, account_numbers, account_types = df_to_csv_main(transactions_file, account_translations_file)
     mappings_df = read_mappings(categorizer_csv)
@@ -402,13 +437,14 @@ def main(file_locations): #{{{
     df_total = df_total.reset_index(drop=True)
     df_joined = pd.concat([df, df_total], ignore_index=True)
     df_joined = df_joined.sort_values(by='Date')
+    df_joined = drop_entries_before_date(df_joined, drop_date)
 
     df_joined = rename_last_column(df_joined, 'Account')
     #write_df_to_excel(df_joined, output_tsv_path, sheet_name='Money Manager')
     write_df_to_tsv(df_joined, output_tsv_path)
-    print("Export to xlsx is complete!")
+    print("Export to tsv is complete!")
  
-    print(df_joined.iloc[0])
+    #print(df_joined.iloc[0])
     
     """
     for i in range(0, len(df)):

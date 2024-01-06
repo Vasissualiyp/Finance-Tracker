@@ -8,7 +8,7 @@ def authenticate_google(): #{{{
     """Authenticate and create a Google Drive API service using a pre-existing token."""
     scopes = ['https://www.googleapis.com/auth/drive']
     creds = None
-    token_file = 'token.pickle'
+    token_file = './web/token.pickle'
 
     # Load the token if it exists
     if os.path.exists(token_file):
@@ -58,7 +58,7 @@ def upload_file(service, file_path, mime_type, folder_id): #{{{
 service = authenticate_google()
 
 # Example usage: replace '/path/to/your/file.tsv', 'your-folder-id' with your file path and folder ID
-tsv_file = '../data/Funds2.tsv'
+tsv_file = './data/Funds2.tsv'
 folder_id = '16MN1Dk06bZp42rsVDjtjr77ZX2cZu7uu'
 #mime_type =  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' # xlsx mime
 mime_type = 'text/tab-separated-values' # tsv mime
