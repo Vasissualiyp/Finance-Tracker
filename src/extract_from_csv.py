@@ -327,10 +327,10 @@ def identify_transferout_transactions(df): #{{{
                     #print(f"i={i}, j={j}...")
                     # Check if they are a matching pair
                     compare = abs( (group.at[i, 'CAD'] - group.at[j, 'CAD']) / group.at[j, 'CAD'] )
-                    if (compare < 0.1 and
+                    if (compare < 0.05 and
                         group.at[i, 'Income/Expense'] != group.at[j, 'Income/Expense']):
-                        print("Success!")
-                        print(f"Date: {group['Date']}")
+                        #print("Success!")
+                        #print(f"Date: {group['Date']}")
                         
                         # Identify income and expense rows
                         income_row = i if group.at[i, 'Income/Expense'] == 'Income' else j
@@ -343,10 +343,14 @@ def identify_transferout_transactions(df): #{{{
     # Process updates and removals
     for row in rows_to_update:
         account_number = df.at[rows_to_remove[rows_to_update.index(row)], 'Account Number']
-        df.at[row, 'Category'] = account_number
-        df.at[row, 'Subcategory'] = ''
-        df.at[row, 'Note'] = ''
-        df.at[row, 'Income/Expense'] = 'Transfer-Out'
+
+        if account_number == df.at[row, 'Account Number']:
+            rows_to_remove.append(row)
+        else:
+            df.at[row, 'Category'] = account_number
+            df.at[row, 'Subcategory'] = ''
+            df.at[row, 'Note'] = ''
+            df.at[row, 'Income/Expense'] = 'Transfer-Out'
 
     df = df.drop(rows_to_remove)
     df = df.reset_index(drop=True)
@@ -438,6 +442,7 @@ def main(file_locations): #{{{
     df_joined = pd.concat([df, df_total], ignore_index=True)
     df_joined = df_joined.sort_values(by='Date')
     df_joined = drop_entries_before_date(df_joined, drop_date)
+    df_joined = remove_duplicate_transactions(df_joined)
 
     df_joined = rename_last_column(df_joined, 'Account')
     #write_df_to_excel(df_joined, output_tsv_path, sheet_name='Money Manager')
